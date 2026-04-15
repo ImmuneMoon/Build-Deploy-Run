@@ -1,0 +1,99 @@
+=== Build Deploy Run Overview ===
+
+>The project aims to create a tool that simplifies the process of building and deploying Python applications, both as executables and Docker images. 
+It involves a GUI installer that sets up the necessary environment and a CLI tool that performs the build and deployment.  
+
+Key Tasks and Flow Alignment:
+
+    Installer GUI Development
+        GUI Elements:
+            Implement a GUI with fields for Xwindows path, Docker path, and the user's project file path.   
+
+>Incorporate icon.ico from the assets directory as the window icon and icon.png within the GUI.  
+>Add a checkbox to allow the user to choose whether to open the project file after installation.  
+>Include a terminal output area within the GUI to display the installation status.  
+>Dark theme/ dev theme for the GUI. (for fun, next phase)  
+
+Installation Logic:
+
+    > During installation, when the user clicks the executible the GUI should:
+        
+> Create a virtual environment (env) within the Build_Deploy_Run folder using the requirements.txt in that folder.   
+> Save user settings (Xwindows, Docker paths, project file) within the Build_Deploy_Run folder.  
+> Check for an existing virtual environment (venv), EXE, and Docker deployment in the user's project's dist directory. If they exist, ignore them (they will be overwritten).  
+> Check for an existing env in the user's project directory and prompt the user to delete it. If the user declines, skip deletion; otherwise, delete or replace it.  
+> Create a new env in the user's project directory.
+> Deposit the necessary Build_Deploy_Run files into the user's project.  
+> Optionally open the Xwindows, Docker, and/or project folder based on the user's selection with seperate checkboxes, or a prompt.  
+
+Post-Installation:
+
+    > After installation, the GUI should display a CLI command for the user to run in their project folder ( .\Build_Deploy_Run\build_and_deploy_venv_locked.bat ) 
+	and copy this command to the user's clipboard. The GUI then exits after user confirmation.   
+
+CLI Tool Functionality (build_fusion.py, deploy_fusion_runner.py)
+
+    > The build_and_deploy_venv_locked.bat script should:
+        
+> Launch the virtual environment created in the user's project directory.
+> Execute the necessary scripts to generate the EXE and Docker image.  
+> Generate a new requirements.txt file if the existing one is inaccurate.  
+> Exit the environment after completion (optional).  
+
+Codebase Review and Refactoring
+
+> File Organization: Ensure files are organized logically, especially within the install_config and workers directories.
+> Logging: Implement consistent and informative logging throughout the application.
+> Error Handling: Robustly handle potential errors, providing informative messages to the user.
+> Path Handling: Use pathlib for cross-platform path manipulation.
+> Configuration: Standardize configuration management (e.g., using .deploy_config ).
+> subprocess Calls: Review all subprocess.run calls for best practices (error handling, logging, security).
+> GUI/CLI Consistency: Ensure smooth data flow and consistent behavior between the GUI installer and the CLI tool.
+> Documentation: Provide clear documentation for the user on how to use the installer and the CLI tool.
+> Testing: Implement testing to ensure the reliability of the installation and deployment process.
+> Packaging: Package the installer appropriately for distribution (e.g., creating an executable).
+
+
+
+=== TODO: ===
+
+I. GUI Installer
+
+    GUI Elements
+        Validate project dir: GUI/callbacks.py (browse_target_project_dir), GUI/gui_state.py (handle_target_project_dir_change)
+        Verify Xwindows/Docker paths: GUI/callbacks.py (browse_docker_path, browse_xwindows_path)
+        Confirm icon loading: GUI/gui_setup.py (setup_window_icon, load_header_icon)
+        Use "open project" checkbox: GUI/widgets.py , GUI/main_view.py , pass variable to install steps
+        Review log output: GUI/gui_utils.py (log_message), GUI/queue_handler.py
+        Implement dark theme: GUI/widgets.py (extensive styling)
+    Installation Logic
+        Create initial env: install_config/install_workers/installer_steps.py (build_steps), install_config/install_workers/venv_utils.py (create_venv)
+        Create user env: install_config/install_workers/installer_steps.py (build_steps), install_config/install_workers/venv_utils.py (create_venv, manage_user_project_venv)
+        Save settings: install_config/install_workers/deploy_config.py (generate_deploy_config), install_config/install_workers/installer_steps.py
+        Check for existing files: install_config/install_workers/installer_steps.py or install_config/install_workers/install_core.py
+        Prompt for venv deletion: GUI/queue_handler.py (use messagebox)
+        Copy files: install_config/install_workers/install_utils.py (copy_bdr_scripts), install_config/install_workers/installer_steps.py
+        Open paths: install_config/install_workers/notify.py (open_folder_and_readme), integrate with checkbox in GUI/callbacks.py and install_config/install_workers/installer_steps.py
+    Post-Installation
+        Display CLI command: GUI/main_view.py (show_final_cli_command), GUI/widgets.py
+        Copy to clipboard: GUI/callbacks.py (copy_command)
+        GUI Exit: GUI/main_view.py (on_closing)
+
+II. CLI Tool
+
+    Execute batch script: N/A (This is a generated file, logic in installer)
+    deploy_fusion_runner.py
+        Activate env: deploy_fusion_runner.py (batch script)
+        Run EXE/Docker build: deploy_fusion_runner.py (build_exe, build_docker), workers/build_fusion.py
+        Generate requirements.txt : deploy_fusion_runner.py , workers/freeze.py
+        Read config: deploy_fusion_runner.py
+        Handle entrypoint: deploy_fusion_runner.py
+
+III. Codebase
+
+    Logging: Throughout all files, use logging module and log_queue .
+    Error Handling: try-except in all functions, inform user.
+    Path Handling: Use pathlib throughout.
+    Configuration: deploy_config.py , consistent usage.
+    subprocess: Review all calls in workers/ and install_config/install_workers/ .
+    GUI/CLI: Consistent data flow.
