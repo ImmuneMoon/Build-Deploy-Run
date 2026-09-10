@@ -8,6 +8,7 @@ def generate_deploy_config(
     target_dir: Path,
     entrypoint: str = "main.py",
     skip_docker: bool = False,
+    skip_exe: bool = False,
     docker_path: str = "",
     xwindows_path: str = "",
     open_project: bool = False # <<< ADD THIS PARAMETER
@@ -20,6 +21,7 @@ def generate_deploy_config(
             "format=kv", # Format marker for future extensibility
             f"entrypoint={entrypoint}",
             f"skip_docker={str(skip_docker).lower()}",
+            f"skip_exe={str(skip_exe).lower()}",
             f"open_project={str(open_project).lower()}" # <<< ADD THIS LINE
         ]
         # Only add paths if they are provided

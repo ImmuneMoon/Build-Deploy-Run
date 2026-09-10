@@ -77,122 +77,75 @@ def write_deploy_config(app_instance):
         logger.exception("Exception while writing deploy_config.json")
 
 
+LEVEL_STYLES = {
+    logging.DEBUG:    ("gray", "[debug]"),
+    logging.INFO:     ("black", "[info] "),
+    logging.WARNING:  ("orange", "[warn] "),
+    logging.ERROR:    ("red", "[ERROR]"),
+    logging.CRITICAL: ("dark red", "[FATAL]"),
+}
+
+
 def log_message(app, message, level=logging.INFO):
-    print(f"[DEBUG] log_message ENTERED with: Level={level}, Msg='{str(message)[:50]}...'") # Use str() for safety
-    color_map = {
-        logging.DEBUG:  ("gray", "🛠"),
-        logging.INFO:   ("black", "ℹ️"),
-        logging.WARNING:("orange", "⚠️"),
-        logging.ERROR:  ("red", "❌"),
-        logging.CRITICAL:("dark red", "💥")
-    }
+    """Appends a line to the GUI log area. ASCII prefixes only: the console may be cp1252."""
+    tag_color, prefix = LEVEL_STYLES.get(level, ("black", "[info] "))
+    full_message = f"{prefix} {str(message).strip()}\n"
 
-    tag_color, emoji = color_map.get(level, ("black", ""))
-    # Ensure message is a string before stripping
-    full_message = f"{emoji} {str(message).strip()}\n"
-
-    if not hasattr(app, 'log_area') or app.log_area is None:
-        print(f"[DEBUG] log_message: log_area not found, falling back to print: {full_message}")
+    log_area = getattr(app, "log_area", None)
+    if log_area is None:
+        print(full_message, end="")
         return
 
     try:
-        print("[DEBUG] log_message: Configuring state NORMAL...")
-        app.log_area.configure(state=tk.NORMAL)
-        print("[DEBUG] log_message: Checking tags...")
-        # Check tags exist before configuring - safer
-        current_tags = app.log_area.tag_names()
-        tags_to_configure = {"gray", "black", "orange", "red", "dark red"}
-        if not tags_to_configure.issubset(current_tags):
-             print("[DEBUG] log_message: Configuring tags...")
-             app.log_area.tag_config("gray", foreground="gray")
-             app.log_area.tag_config("black", foreground="black")
-             app.log_area.tag_config("orange", foreground="orange")
-             app.log_area.tag_config("red", foreground="red")
-             app.log_area.tag_config("dark red", foreground="dark red")
-
-        print(f"[DEBUG] log_message: Inserting text '{full_message.strip()}' with tag '{tag_color}'...")
-        app.log_area.insert(tk.END, full_message, (tag_color,)) # Pass tag as a tuple
-        print("[DEBUG] log_message: Scrolling...")
-        app.log_area.see(tk.END)
-        print("[DEBUG] log_message: Configuring state DISABLED...")
-        app.log_area.configure(state=tk.DISABLED)
-        print("[DEBUG] log_message: FINISHED update.")
+        log_area.configure(state=tk.NORMAL)
+        if "dark red" not in log_area.tag_names():
+            for color in ("gray", "black", "orange", "red", "dark red"):
+                log_area.tag_config(color, foreground=color)
+        log_area.insert(tk.END, full_message, (tag_color,))
+        log_area.see(tk.END)
     except Exception as e:
-        print(f"[ERROR] log_message: EXCEPTION during widget update: {e}")
-        # Fallback print if widget update fails
-        print(f"[FALLBACK LOG] {full_message}")
-        # Attempt to disable anyway if possible, might fail again
+        logger.error(f"log_message: could not update log widget: {e}")
+    finally:
         try:
-            if app.log_area: app.log_area.configure(state=tk.DISABLED)
-        except:
-            pass # Ignore secondary error
+            log_area.configure(state=tk.DISABLED)
+        except Exception:
+            pass
 
 
 def start_queue_processing(app):
-    print("[DEBUG] start_queue_processing ENTERED")
+    """Polls app.log_queue every 100 ms and writes entries to the log area."""
 
     def poll_log_queue():
-        print("[DEBUG] poll_log_queue ENTERED")
-
-        if not hasattr(app, "root"):
-            print("[DEBUG] poll_log_queue: App has no root attribute. Exiting.")
-            return
-
+        root = getattr(app, "root", None)
         try:
-            if not app.root.winfo_exists():
-                print("[DEBUG] poll_log_queue: Root window destroyed. Exiting.")
+            if root is None or not root.winfo_exists():
                 return
-        except Exception as e:
-            print(f"[DEBUG] poll_log_queue: Exception checking root existence: {e}. Exiting.")
+        except Exception:
             return
 
-        processed_message = False
-
-        while not app.log_queue.empty():
-            processed_message = True
-            print(f"[DEBUG] poll_log_queue found message in queue!")
-
+        while True:
             try:
                 data = app.log_queue.get_nowait()
-
-                if isinstance(data, tuple):
-                    if len(data) == 2:
-                        level, msg = data
-                        log_message(app, msg, level)
-                    elif len(data) == 3:
-                        level, _tag, msg = data
-                        log_message(app, msg, level)
-                    else:
-                        print(f"[WARNING] poll_log_queue: Unexpected tuple format: {data}")
-                        log_message(app, str(data), logging.WARNING)
-                else:
-                    print(f"[WARNING] poll_log_queue: Non-tuple data: {data}")
-                    log_message(app, str(data), logging.INFO)
-
             except queue.Empty:
-                print("[DEBUG] poll_log_queue: Queue empty during processing loop.")
                 break
+            try:
+                if isinstance(data, tuple) and len(data) == 2:
+                    level, msg = data
+                elif isinstance(data, tuple) and len(data) == 3:
+                    level, _tag, msg = data
+                else:
+                    level, msg = logging.INFO, str(data)
+                log_message(app, msg, level)
             except Exception as e:
-                print(f"[ERROR] poll_log_queue: Error processing queue item: {e}")
                 logger.error(f"Log queue processing error: {e}", exc_info=True)
 
-        if processed_message:
-            try:
-                print("[DEBUG] poll_log_queue: Calling app.root.update()")
-                app.root.update()
-            except Exception as e_update:
-                print(f"[ERROR] poll_log_queue: Error during root update: {e_update}")
-                logger.error(f"Root update error: {e_update}", exc_info=True)
-
-        # Reschedule regardless
         try:
-            app.root.after(100, poll_log_queue)
-        except Exception as e_after:
-            print(f"[DEBUG] poll_log_queue: Cannot reschedule after(): {e_after}. Assuming shutdown.")
-            logger.debug(f"poll_log_queue reschedule failed: {e_after}")
+            root.after(100, poll_log_queue)
+        except Exception as e:
+            logger.debug(f"poll_log_queue reschedule failed (shutting down?): {e}")
 
-    print("[DEBUG] start_queue_processing: Making initial call to poll_log_queue.")
     poll_log_queue()
+
 
 # FIX: Ensure this function definition starts at column 0 (no indentation)
 def run_subprocess_streamed(cmd, queue_obj, cwd=None, env=None):

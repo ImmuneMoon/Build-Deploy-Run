@@ -16,12 +16,12 @@ VSVersionInfo(
         StringTable(
           '040904B0',
           [
-            StringStruct('CompanyName', 'Your Company'),
-            StringStruct('FileDescription', 'BDR Installer GUI'),
+            StringStruct('CompanyName', 'Fulllion Creative Works'),
+            StringStruct('FileDescription', 'Build Deploy Run - package a Python project as an EXE and Docker image'),
             StringStruct('FileVersion', '1.0.0'),
-            StringStruct('InternalName', 'BuildDeployInstaller'),
-            StringStruct('OriginalFilename', 'BuildDeployInstaller.exe'),
-            StringStruct('ProductName', 'BDR Platform'),
+            StringStruct('InternalName', 'BuildDeployRun'),
+            StringStruct('OriginalFilename', 'BuildDeployRun.exe'),
+            StringStruct('ProductName', 'Build Deploy Run'),
             StringStruct('ProductVersion', '1.0.0')
           ]
         )

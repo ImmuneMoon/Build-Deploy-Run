@@ -11,7 +11,6 @@ from install_config.install_workers.GUI.gui_utils import get_icon_image
 # Import GUI modules
 from . import widgets
 from . import callbacks
-from .gui_utils import write_deploy_config
 
 logger = logging.getLogger(__name__)
 ImageFile.LOAD_TRUNCATED_IMAGES = True  # Failsafe for malformed PNGs
@@ -99,34 +98,5 @@ def setup_ui_widgets(app_instance):
             messagebox.showerror("Widget Init Error", f"{e}")
         except: pass
         raise
-
-    # Add optional post-install controls to final_frame if it exists
-    try:
-        if app_instance.final_frame:
-            app_instance.run_after_checkbox = tk.Checkbutton(
-                app_instance.final_frame,
-                text="Run deployment after install",
-                variable=app_instance.run_after_install_var
-            )
-            app_instance.run_after_checkbox.grid(row=2, column=0, sticky="w", padx=10, pady=5)
-            logger.debug("Run-after-install checkbox added.")
-        else:
-            logger.warning("final_frame not found; checkbox not added.")
-    except Exception as e:
-        logger.error(f"Failed to add run-after-install checkbox: {e}", exc_info=True)
-
-    try:
-        if app_instance.final_frame:
-            app_instance.save_config_button = tk.Button(
-                app_instance.final_frame,
-                text="Save Deploy Config",
-                command=lambda: write_deploy_config(app_instance)
-            )
-            app_instance.save_config_button.grid(row=2, column=1, sticky="w", padx=10, pady=5)
-            logger.debug("Save Deploy Config button added.")
-        else:
-            logger.warning("final_frame not found; Save Config button not added.")
-    except Exception as e:
-        logger.error(f"Failed to add Save Deploy Config button: {e}", exc_info=True)
 
     logger.debug("UI widgets setup completed.")

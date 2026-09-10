@@ -25,7 +25,8 @@ def get_docker_path():
 
     # Default locations (consider adding more)
     default_paths = [
-        Path("C:/Program Files/Docker/Docker/resources/bin/docker.exe"),  # Windows
+        Path("C:/Program Files/Docker/Docker/resources/bin/docker.exe"),  # Windows, machine-wide
+        Path(os.environ.get("LOCALAPPDATA", "")) / "Programs/DockerDesktop/resources/bin/docker.exe",  # Windows, per-user
         Path("/usr/local/bin/docker"),  # macOS/Linux
         Path("/usr/bin/docker"),
     ]

@@ -38,7 +38,7 @@ def _send_notification(title, message):
             notification.notify(
                 title=title,
                 message=message,
-                app_name="BDR Installer",
+                app_name="Build Deploy Run",
                 timeout=10
             )
             logger.info(f"Sent notification: Title='{title}'")
@@ -76,7 +76,8 @@ class InstallerApp(GUIStateMixin):
             self.xwindows_path_var = None
             self.open_project_var = None
             self.force_replace_user_env_var = None # Expected from mixin/gui_state.py
-            self.skip_docker_var = tk.BooleanVar(value=False, name="skip_docker_var") # Example if added
+            self.build_target_var = None           # Created in initialize_tk_variables (do not create twice:
+            self.run_after_install_var = None      # a discarded named tk.Variable deletes the Tcl variable)
 
             # --- GUI Widget References (Populated by gui_setup) ---
             self.png_icon = None
@@ -106,7 +107,7 @@ class InstallerApp(GUIStateMixin):
             self.filedialog = filedialog
 
             # --- Initialization Steps ---
-            self.root.title(f"{self.BDR_FOLDER_NAME} - Installer")
+            self.root.title("Build Deploy Run")
             self.root.geometry("700x650") # Adjust size as needed
 
             self.determine_bdr_source_dir()   # Determine where BDR source files are
@@ -128,8 +129,8 @@ class InstallerApp(GUIStateMixin):
             self.root.protocol("WM_DELETE_WINDOW", self.on_closing) # Handle window close
             gui_utils.start_queue_processing(self) # Start polling log queue
 
-            self.log_message_action(f"Installer GUI Initialized. Project Root: {self.PROJECT_ROOT}", logging.DEBUG)
-            self.log_message_action(f"BuildDeployRun Source Path: {self.bdr_source_dir}", logging.DEBUG)
+            self.log_message_action("Build Deploy Run ready. Pick a project folder and an entrypoint, then click Build Project.", logging.INFO)
+            self.log_message_action(f"Build tools source: {self.bdr_source_dir}", logging.DEBUG)
             logger.debug("InstallerApp - Initialization complete.")
 
         except Exception as e:
@@ -169,7 +170,7 @@ class InstallerApp(GUIStateMixin):
         """Internal logic for closing the application."""
         logger.info("Exit requested...")
         if self.install_thread and self.install_thread.is_alive():
-            if messagebox.askyesno("Confirm Exit", "Installation running. Cancel and exit?", parent=self.root, icon='warning'):
+            if messagebox.askyesno("Confirm Exit", "A build is running. Cancel and exit?", parent=self.root, icon='warning'):
                 self.stop_event.set() # Signal thread to stop
                 self.is_installing = False # Update state
                 self.log_message_action("Cancellation requested by user.", logging.WARNING)
@@ -189,12 +190,22 @@ class InstallerApp(GUIStateMixin):
 
 
 # determine_bdr_source_dir from GUIStateMixin
+    def field_value(self, var_name: str) -> str:
+        """Returns the stripped value of a StringVar, or '' if it still shows its placeholder text."""
+        var = getattr(self, var_name, None)
+        if var is None:
+            return ""
+        value = var.get().strip()
+        placeholder = getattr(self, "placeholders", {}).get(var_name)
+        return "" if placeholder and value == placeholder else value
+
     def validate_critical_paths(self):
         """Ensure all critical paths (docker, xwindows) are valid if specified."""
         errors = []
 
-        docker_path = Path(self.docker_path_var.get().strip()).resolve()
-        xwindows_path = Path(self.xwindows_path_var.get().strip()).resolve()
+        # Both fields are optional: empty means "not configured" and must not block the install.
+        docker_path = self.field_value("docker_path_var")
+        xwindows_path = self.field_value("xwindows_path_var")
 
         if docker_path and not Path(docker_path).is_file():
             errors.append(f"Docker executable not found at: {docker_path}")
@@ -224,14 +235,14 @@ class InstallerApp(GUIStateMixin):
             return  # Abort if invalid paths found
 
         if self.is_installing:
-            self.log_message_action("Installation is already in progress.", logging.WARNING)
+            self.log_message_action("A build is already in progress.", logging.WARNING)
             return
 
         # --- Get values from GUI ---
-        target_dir = self.target_project_dir_var.get()
-        entrypoint_value = self.entrypoint_var.get()
-        docker_path_value = self.docker_path_var.get()
-        xwindows_path_value = self.xwindows_path_var.get()
+        target_dir = self.field_value("target_project_dir_var")
+        entrypoint_value = self.field_value("entrypoint_var")
+        docker_path_value = self.field_value("docker_path_var")
+        xwindows_path_value = self.field_value("xwindows_path_var")
         open_project_flag = self.open_project_var.get()
 
         # Safely get boolean flags, default to False if var not found
@@ -252,11 +263,15 @@ class InstallerApp(GUIStateMixin):
             logger.error("Attribute 'force_replace_user_env_var' missing during get. Defaulting to False.")
 
         try:
-            # Assuming you might add a skip_docker_var BooleanVar
-            skip_docker_flag = self.skip_docker_var.get()
+            build_target = self.build_target_var.get()
         except (AttributeError, tk.TclError):
-            logger.debug("GUI variable 'skip_docker_var' not found. Defaulting to False.")
-            skip_docker_flag = False # Default if no checkbox exists
+            build_target = "both"
+        skip_docker_flag = build_target == "exe"
+        skip_exe_flag = build_target == "docker"
+        try:
+            run_after_flag = self.run_after_install_var.get()
+        except (AttributeError, tk.TclError):
+            run_after_flag = True
 
         placeholder = getattr(self, 'entrypoint_placeholder', 'e.g., main.py')
 
@@ -288,15 +303,17 @@ class InstallerApp(GUIStateMixin):
         bdr_source_dir_path = self.bdr_source_dir
 
         # Log configuration being used
-        self.log_message_action(f"Starting installation for project: {user_project_path}", logging.INFO)
+        self.log_message_action(f"Starting build for project: {user_project_path}", logging.INFO)
         self.log_message_action(f"  BDR Source: {bdr_source_dir_path}", logging.DEBUG)
         self.log_message_action(f"  Entrypoint: {entrypoint_value}", logging.INFO)
         self.log_message_action(f"  Force Replace User Venv: {force_replace_flag}", logging.INFO)
         self.log_message_action(f"  Open Project Folder: {open_project_flag}", logging.INFO)
         self.log_message_action(f"  Docker Path: {docker_path_value or 'Not Set'}", logging.INFO)
         self.log_message_action(f"  Xwindows Path: {xwindows_path_value or 'Not Set'}", logging.INFO)
-        self.log_message_action(f"  Skip Docker: {skip_docker_flag}", logging.INFO)
+        self.log_message_action(f"  Build target: {build_target}", logging.INFO)
+        self.log_message_action(f"  Run build after install: {run_after_flag}", logging.INFO)
 
+        self.install_result = None
 
         # --- Run Installation in Thread ---
         def run_install():
@@ -315,23 +332,25 @@ class InstallerApp(GUIStateMixin):
                     xwindows_path=xwindows_path_value,      # Xwindows path from GUI
                     log_queue=self.log_queue,               # For logging from thread
                     stop_event=self.stop_event,             # For cancellation
-                    skip_docker=skip_docker_flag            # Pass skip docker flag
+                    skip_docker=skip_docker_flag,           # Pass skip docker flag
+                    skip_exe=skip_exe_flag,
+                    run_after_install=run_after_flag,
                 )
             except Exception as e:
                 # Catch unexpected errors within the thread itself
-                error_msg = f"Installation thread crashed: {e}"
+                error_msg = f"Build thread crashed: {e}"
                 self.log_message_action(error_msg, logging.CRITICAL)
                 logger.error(f"Installation thread exception: {e}", exc_info=True)
                 # Log to queue to ensure GUI gets notified if possible
-                _send_notification("Installation Failed", f"{type(e).__name__}: {e}")
+                _send_notification("Build Failed", f"{type(e).__name__}: {e}")
 
                 try:
                     self.log_queue.put((logging.CRITICAL, f"FATAL INSTALL ERROR: {e}"))
                 except Exception: pass # Ignore queue errors if GUI is closing
             finally:
-                # Log thread completion status
+                # Log thread completion status; _check_install_complete reads install_result.
+                self.install_result = bool(install_success)
                 logger.debug(f"Installation thread finished. Reported Success={install_success}")
-                # GUI state update is handled by _check_install_complete polling
 
         # Create and start the thread
         self.stop_event.clear() # Ensure stop event is clear before starting
@@ -363,26 +382,25 @@ class InstallerApp(GUIStateMixin):
 
             # Check if cancellation was requested
             if self.stop_event.is_set():
-                 self.log_message_action("Installation was cancelled.", logging.WARNING)
+                 self.log_message_action("Build was cancelled.", logging.WARNING)
                  # show a messagebox for cancellation
-                 self.messagebox.showwarning("Cancelled", "Installation cancelled.", parent=self.root)
+                 self.messagebox.showwarning("Cancelled", "Build cancelled.", parent=self.root)
                  # Send notification of cancellation if user minimizes window
-                 _send_notification("Installation Cancelled", "User aborted the process.")
+                 _send_notification("Build Cancelled", "User aborted the process.")
 
+            elif getattr(self, "install_result", False):
+                 self.log_message_action("Build completed successfully.", logging.INFO)
+                 _send_notification("Build Deploy Run", "Build complete. Output is in your project's dist folder.")
+                 self.show_final_cli_command() # Shows the rebuild command and copies it
             else:
-                 # Assume success if not cancelled (errors logged via queue)
-                 # Maybe check a result status if run_install could return one?
-                 self.log_message_action("Installation process completed.", logging.INFO)
-                 self.messagebox.showinfo("Success", "Installation completed!", parent=self.root)
-                 _send_notification("BDR Installation Complete", "Your project was installed successfully.")
-                 self.show_final_cli_command() # Show final command/info
+                 self.log_message_action("Build FAILED. See the log above for the failing step.", logging.ERROR)
+                 self.messagebox.showerror(
+                     "Build Failed",
+                     "The build did not complete.\n\nCheck the Build Log for the step marked FAILED "
+                     "(right-click the log to copy it).",
+                     parent=self.root)
+                 _send_notification("Build Deploy Run", "Build failed. See the log for details.")
 
-                 # Auto exit
-                 # Destroy the window after user clicks OK on the message box
-                 self.log_message_action("Exiting installer.", logging.INFO)
-                 # Use after to ensure message box closes before destroying root
-                 self.root.after(100, self.root.destroy)
-            
         else:
             # If still running, schedule the next check
             logger.debug("Install thread still running, rescheduling check.")

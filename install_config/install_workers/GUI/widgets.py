@@ -94,7 +94,7 @@ def create_all_widgets(app):
         except Exception as e:
             logger.error(f"Failed to display header icon: {e}")
     # Display application title
-    ttk.Label(header, text=f"{getattr(app, 'BDR_FOLDER_NAME', 'Installer')} Installer", style="Header.TLabel")\
+    ttk.Label(header, text="Build Deploy Run", style="Header.TLabel")\
         .grid(row=0, column=1, sticky="w")
 
     # --- Separator ---
@@ -142,6 +142,10 @@ def create_all_widgets(app):
         ("Xwindows (VcXsrv):", 'xwindows_path_entry', 'xwindows_path_var', app.callbacks.browse_xwindows_path, "Path to vcxsrv.exe (Optional)", False)
     ]
 
+    # Placeholders are inserted straight into the Entry and therefore land in the bound variable.
+    # Record them so main_view can treat "still showing the placeholder" as an empty field.
+    app.placeholders = {'target_project_dir_var': placeholder_target}
+
     # Create labels, entries, and buttons for config paths
     for i, (label, attr, var, cb, placeholder, disable_initially) in enumerate(entries):
         ttk.Label(config, text=label).grid(row=i, column=0, sticky=tk.W, padx=5, pady=2)
@@ -149,6 +153,7 @@ def create_all_widgets(app):
         if entry_var is None: # Check if variable exists
             logger.error(f"Tkinter variable '{var}' not found on app object!")
             continue
+        app.placeholders[var] = placeholder
         entry = ttk.Entry(config, width=60, textvariable=entry_var)
         _set_placeholder(entry, entry_var.get(), placeholder) # Set initial placeholder if needed
         if disable_initially:
@@ -163,24 +168,35 @@ def create_all_widgets(app):
     # --- Options Frame ---
     options = ttk.LabelFrame(main, text="Options", padding="10 5")
     options.grid(row=2, column=0, sticky="ew", pady=(0, 10))
-    # Pack checkboxes horizontally within the options frame
-    ttk.Checkbutton(options, text="Open project folder after install", variable=app.open_project_var).pack(side=tk.LEFT, padx=10, pady=5)
+    options.columnconfigure(0, weight=1)
+    options.columnconfigure(1, weight=1)
+    # Row 0: what to build
+    target_row = ttk.Frame(options)
+    target_row.grid(row=0, column=0, columnspan=2, sticky=tk.W, padx=10, pady=(3, 6))
+    ttk.Label(target_row, text="Build target:").pack(side=tk.LEFT, padx=(0, 8))
+    app.build_target_radios = []
+    for text, value in (("EXE + Docker image", "both"), ("EXE only", "exe"), ("Docker image only", "docker")):
+        rb = ttk.Radiobutton(target_row, text=text, value=value, variable=app.build_target_var)
+        rb.pack(side=tk.LEFT, padx=(0, 12))
+        app.build_target_radios.append(rb)
 
-    # <<< ADDED CHECKBOX WIDGET >>>
-    # Ensure app.force_replace_user_env_var (tk.BooleanVar) was initialized
-    if hasattr(app, 'force_replace_user_env_var'):
-        app.force_replace_checkbox = ttk.Checkbutton(
-            options, # Parent is the options frame
-            text="Replace existing project environment (.venv) if found?",
-            variable=app.force_replace_user_env_var # Link to the BooleanVar
-        )
-        app.force_replace_checkbox.pack(side=tk.LEFT, padx=10, pady=5) # Place it next to the other one
-    else:
-        logger.error("'force_replace_user_env_var' not found on app object! Checkbox not created.")
-    # <<< END ADDED CHECKBOX WIDGET >>>
+    # Rows 1-2: checkboxes
+    option_defs = [
+        ("run_after_install_var", "Package right after setup", "run_after_checkbox"),
+        ("open_project_var", "Open project folder when done", "open_project_checkbox"),
+        ("force_replace_user_env_var", "Replace existing project environment (.venv) if found", "force_replace_checkbox"),
+    ]
+    for i, (var_name, text, widget_attr) in enumerate(option_defs):
+        var = getattr(app, var_name, None)
+        if var is None:
+            logger.error(f"'{var_name}' not found on app object! Checkbox not created.")
+            continue
+        cb = ttk.Checkbutton(options, text=text, variable=var)
+        cb.grid(row=1 + i // 2, column=i % 2, sticky=tk.W, padx=10, pady=3)
+        setattr(app, widget_attr, cb)
 
     # --- Log Area ---
-    ttk.Label(main, text="Installation Log:").grid(row=3, column=0, sticky=tk.W, pady=2)
+    ttk.Label(main, text="Build Log:").grid(row=3, column=0, sticky=tk.W, pady=2)
     app.log_area = scrolledtext.ScrolledText(main, wrap=tk.WORD, height=10, state=tk.DISABLED, font=("Consolas", 9))
     app.log_area.grid(row=4, column=0, sticky="nsew", pady=(0, 5))
     # Context menu for log area
@@ -215,7 +231,7 @@ def create_all_widgets(app):
     button_frame.columnconfigure(1, weight=1) # Spacer
     button_frame.columnconfigure(2, weight=0)
     # Install Button
-    app.install_button = ttk.Button(button_frame, text="Start Installation", command=app.on_install_button_click)
+    app.install_button = ttk.Button(button_frame, text="Build Project", command=app.on_install_button_click)
     app.install_button.grid(row=0, column=0, sticky=tk.W, padx=(0,5)) # Add padding
     # Exit/Cancel Button
     app.exit_button = ttk.Button(button_frame, text="Exit", command=app.on_closing)

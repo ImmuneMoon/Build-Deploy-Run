@@ -5,6 +5,9 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# The GUI exe is windowed; without this flag every child process would flash a console window.
+NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+
 
 def write_bdr_config_file(target_dir, xwindows_path=None, docker_path=None, open_paths=None):
     """
@@ -15,8 +18,6 @@ def write_bdr_config_file(target_dir, xwindows_path=None, docker_path=None, open
     :param docker_path: Optional Docker executable path
     :param open_paths: List of additional openable paths (optional)
     """
-    logger = logging.getLogger(__name__)
-
     try:
         # Make sure target_dir is Path object
         target_dir = Path(target_dir)
@@ -74,7 +75,17 @@ def create_venv(path: Path, force_delete: bool = False):
     system_python = find_system_python()
 
     try:
-        subprocess.run([str(system_python), "-m", "venv", str(path)], check=True, capture_output=True, text=True)
+        result = subprocess.run([str(system_python), "-m", "venv", str(path)],
+                                check=False, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                                creationflags=NO_WINDOW)
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or "").strip()
+            hint = ""
+            if "ensurepip" in detail and len(str(path)) > 120:
+                hint = (" Hint: pip could not install into this venv, which usually means the project path is "
+                        "too deep for Windows' 260-character limit. Move the project to a shorter path "
+                        "or enable long paths in Windows.")
+            raise RuntimeError(f"'{system_python} -m venv' failed (exit {result.returncode}): {detail}{hint}")
         logger.info(f"[VENV] Created successfully at {path}")
 
         # Post-creation sanity check
@@ -82,7 +93,7 @@ def create_venv(path: Path, force_delete: bool = False):
         if not venv_python.is_file():
             raise RuntimeError(f"Python binary missing after venv creation at {path}")
 
-        subprocess.run([str(venv_python), "--version"], check=True, capture_output=True, timeout=10)
+        subprocess.run([str(venv_python), "--version"], check=True, capture_output=True, timeout=10, creationflags=NO_WINDOW)
     except Exception as e:
         logger.critical(f"[VENV ERROR] Venv creation failed: {e}")
         if path.exists():
@@ -116,16 +127,18 @@ def install_requirements(venv_path: Path, requirements_file: Path, strict: bool 
 
     try:
         subprocess.run([str(venv_python), "-m", "pip", "install", "--upgrade", "pip"],
-                       check=False, capture_output=True, text=True, env=env)
+                       check=False, capture_output=True, text=True, env=env, creationflags=NO_WINDOW)
 
-        subprocess.run([str(venv_python), "-m", "pip", "install", "-r", str(requirements_file)],
-                       check=True, capture_output=True, text=True, env=env)
+        result = subprocess.run([str(venv_python), "-m", "pip", "install", "-r", str(requirements_file)],
+                                check=False, capture_output=True, text=True, env=env,
+                                encoding="utf-8", errors="replace", creationflags=NO_WINDOW)
+        if result.returncode != 0:
+            tail = "\n".join((result.stderr or result.stdout or "").strip().splitlines()[-15:])
+            raise RuntimeError(f"pip install -r {requirements_file.name} failed (exit {result.returncode}):\n{tail}")
 
         logger.info("[PIP INSTALL] Requirements installed successfully.")
-    except subprocess.CalledProcessError as e:
+    except Exception as e:
         logger.error(f"[PIP INSTALL ERROR] {e}")
-        if venv_path.exists():
-            shutil.rmtree(venv_path)
         raise
 
 
