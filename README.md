@@ -6,7 +6,9 @@ rebuild from a batch file afterwards.
 
 ## Using the app
 
-1. Run `dist\BuildDeployRun.exe` (or `launch.bat`).
+1. Download `BuildDeployRun.exe` from the
+   [latest release](https://github.com/ImmuneMoon/Build-Deploy-Run/releases/latest) and run it.
+   If you built from source instead, run `dist\BuildDeployRun.exe` or `launch.bat`.
 2. Pick your project folder and its entrypoint script (for example `main.py` or `src\main.py`).
 3. Choose a **Build target**: EXE + Docker image, EXE only, or Docker image only. Leave the
    Docker path empty unless Docker is installed somewhere unusual.

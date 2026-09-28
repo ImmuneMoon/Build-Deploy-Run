@@ -5,8 +5,9 @@ __pycache__/
 venv/
 logs/
 
-# PyInstaller output
+# PyInstaller output (the release EXE ships via GitHub Releases)
 build/
+dist/
 *.spec.bak
 
 # Editor / OS
